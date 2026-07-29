@@ -1,0 +1,16 @@
+{
+  "name": "Sudoku Instantáneo",
+  "short_name": "Sudoku",
+  "description": "Sudoku móvil con seis niveles, notas, pistas y guardado automático.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f8f7",
+  "theme_color": "#075e54",
+  "icons": [
+    {"src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

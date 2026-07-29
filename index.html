@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#075e54">
+  <meta name="description" content="Sudoku PWA responsivo con seis niveles, notas, pistas, guardado automático y funcionamiento sin conexión.">
+  <meta name="robots" content="index,follow">
+  <meta property="og:title" content="Sudoku Instantáneo">
+  <meta property="og:description" content="Sudoku móvil con seis niveles y guardado automático.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://jazzy-wisp-f7af77.netlify.app/">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="stylesheet" href="src/styles.css">
+  <title>Sudoku Instantáneo</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <main id="main" class="app">
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">９</div>
+        <div>
+          <h1>Sudoku Instantáneo</h1>
+          <p>Toca y juega · Guarda la partida</p>
+        </div>
+      </div>
+      <button class="icon-button" id="helpButton" type="button" aria-label="Abrir ayuda">?</button>
+    </header>
+
+    <section id="menuScreen" class="screen card active" aria-labelledby="menuTitle">
+      <div class="hero">
+        <span class="eyebrow">Progressive Web App</span>
+        <h2 id="menuTitle">Elige un nivel</h2>
+        <p>Partidas rápidas, controles táctiles y guardado automático en el dispositivo.</p>
+      </div>
+
+      <div class="primary-actions">
+        <button id="continueButton" class="wide-button continue-button" type="button" hidden>▶ Continuar partida</button>
+        <button id="shareGameButton" class="wide-button share-button" type="button">↗ Compartir juego</button>
+      </div>
+
+      <div class="levels" aria-label="Niveles de dificultad">
+        <button class="level easy" data-level="easy" type="button">Fácil<small>42 pistas</small></button>
+        <button class="level medium" data-level="medium" type="button">Medio<small>36 pistas</small></button>
+        <button class="level hard" data-level="hard" type="button">Difícil<small>32 pistas</small></button>
+        <button class="level expert" data-level="expert" type="button">Experto<small>29 pistas</small></button>
+        <button class="level pro" data-level="pro" type="button">Pro<small>27 pistas</small></button>
+        <button class="level master" data-level="master" type="button">Maestro<small>25 pistas</small></button>
+      </div>
+
+      <p class="tip"><strong>Consejo:</strong> selecciona una casilla y luego un número. Activa «Notas» para escribir candidatos.</p>
+    </section>
+
+    <section id="gameScreen" class="screen card" aria-label="Partida de Sudoku">
+      <div class="game-bar">
+        <button class="icon-button back-button" id="backButton" type="button" aria-label="Volver al menú">←</button>
+        <span id="levelBadge" class="badge">Fácil</span>
+        <div class="stats" aria-live="polite">
+          <span id="timer" class="stat">00:00</span>
+          <span id="mistakes" class="stat">Errores: 0</span>
+        </div>
+      </div>
+
+      <div class="board-wrap">
+        <div id="board" class="board" role="grid" aria-label="Tablero de Sudoku de nueve por nueve"></div>
+        <div id="pauseCover" class="pause-cover" hidden>
+          <div>
+            <strong>Partida pausada</strong>
+            <button id="resumeButton" type="button">Continuar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar" aria-label="Herramientas">
+        <button class="tool" id="undoButton" type="button"><span aria-hidden="true">↶</span>Deshacer</button>
+        <button class="tool" id="eraseButton" type="button"><span aria-hidden="true">⌫</span>Borrar</button>
+        <button class="tool" id="notesButton" type="button" aria-pressed="false"><span aria-hidden="true">✎</span>Notas</button>
+        <button class="tool" id="hintButton" type="button"><span aria-hidden="true">💡</span>Pista</button>
+        <button class="tool" id="pauseButton" type="button"><span aria-hidden="true">⏸</span>Pausa</button>
+      </div>
+
+      <div id="numberPad" class="number-pad" aria-label="Teclado numérico"></div>
+      <p class="footer-line">La partida se guarda automáticamente en este navegador.</p>
+    </section>
+  </main>
+
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
+    <div class="modal-box">
+      <div id="modalContent"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <noscript>Este juego necesita JavaScript para funcionar.</noscript>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
