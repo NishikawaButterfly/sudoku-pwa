@@ -1,15 +1,16 @@
 import { PUZZLES } from './puzzles.js';
 
 const LEVELS = {
-  easy: 'Fácil',
-  medium: 'Medio',
-  hard: 'Difícil',
-  expert: 'Experto',
+  easy: 'Easy',
+  medium: 'Medium',
+  hard: 'Hard',
+  expert: 'Expert',
   pro: 'Pro',
-  master: 'Maestro',
+  master: 'Master',
 };
 
 const STORAGE_KEY = 'sudoku-instantaneo-state-v2';
+const STATE_VERSION = 3;
 const HISTORY_LIMIT = 100;
 
 const byId = (id) => document.getElementById(id);
@@ -19,14 +20,17 @@ const boardElement = byId('board');
 const numberPad = byId('numberPad');
 const modal = byId('modal');
 const modalContent = byId('modalContent');
+const appElement = byId('main');
 
 let game = null;
 let selected = -1;
 let notesMode = false;
 let paused = false;
+let completed = false;
 let timerId = null;
 let history = [];
 let lastFocusedElement = null;
+let modalDismissible = true;
 
 function readSavedGame() {
   try {
@@ -40,7 +44,7 @@ function writeSavedGame(value) {
   try {
     localStorage.setItem(STORAGE_KEY, value);
   } catch {
-    showToast('No se pudo guardar la partida');
+    showToast('The game could not be saved');
   }
 }
 
@@ -49,6 +53,22 @@ function removeSavedGame() {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Storage may be disabled. The current game can still continue in memory.
+  }
+}
+
+function readLastPuzzle(level) {
+  try {
+    return Number(sessionStorage.getItem(`last-${level}`));
+  } catch {
+    return Number.NaN;
+  }
+}
+
+function writeLastPuzzle(level, index) {
+  try {
+    sessionStorage.setItem(`last-${level}`, String(index));
+  } catch {
+    // Puzzle selection still works when session storage is unavailable.
   }
 }
 
@@ -62,15 +82,84 @@ function cloneNotes(notes) {
   return notes.map((entry) => [...entry]);
 }
 
+function isIntegerBetween(value, minimum, maximum) {
+  return Number.isInteger(value) && value >= minimum && value <= maximum;
+}
+
+function isValidSolution(solution) {
+  if (!Array.isArray(solution) || solution.length !== 81) return false;
+  if (!solution.every((value) => isIntegerBetween(value, 1, 9))) return false;
+
+  const units = [];
+  for (let row = 0; row < 9; row += 1) {
+    units.push(solution.slice(row * 9, row * 9 + 9));
+  }
+  for (let column = 0; column < 9; column += 1) {
+    units.push(Array.from({ length: 9 }, (_, row) => solution[row * 9 + column]));
+  }
+  for (let boxRow = 0; boxRow < 3; boxRow += 1) {
+    for (let boxColumn = 0; boxColumn < 3; boxColumn += 1) {
+      const unit = [];
+      for (let row = 0; row < 3; row += 1) {
+        for (let column = 0; column < 3; column += 1) {
+          unit.push(solution[(boxRow * 3 + row) * 9 + boxColumn * 3 + column]);
+        }
+      }
+      units.push(unit);
+    }
+  }
+  return units.every((unit) => new Set(unit).size === 9);
+}
+
+function normalizeSavedGame(saved) {
+  if (!saved || typeof saved !== 'object') return null;
+  if (!Object.prototype.hasOwnProperty.call(LEVELS, saved.level)) return null;
+  if (!Array.isArray(saved.puzzle) || saved.puzzle.length !== 81) return null;
+  if (!Array.isArray(saved.values) || saved.values.length !== 81) return null;
+  if (!saved.puzzle.every((value) => isIntegerBetween(value, 0, 9))) return null;
+  if (!saved.values.every((value) => isIntegerBetween(value, 0, 9))) return null;
+  if (!isValidSolution(saved.solution)) return null;
+  if (!isIntegerBetween(saved.elapsed, 0, 31_536_000)) return null;
+  if (!isIntegerBetween(saved.mistakes, 0, 1_000_000)) return null;
+  if (!isIntegerBetween(saved.hints, 0, 81)) return null;
+
+  const notes = saved.notes ?? Array.from({ length: 81 }, () => []);
+  if (!Array.isArray(notes) || notes.length !== 81) return null;
+  const normalizedNotes = [];
+  for (let index = 0; index < 81; index += 1) {
+    if (saved.puzzle[index] && saved.puzzle[index] !== saved.solution[index]) return null;
+    if (saved.puzzle[index] && saved.values[index] !== saved.puzzle[index]) return null;
+    const entry = notes[index];
+    if (!Array.isArray(entry) || !entry.every((value) => isIntegerBetween(value, 1, 9))) return null;
+    const unique = [...new Set(entry)].sort((a, b) => a - b);
+    if (unique.length !== entry.length) return null;
+    normalizedNotes.push(saved.values[index] ? [] : unique);
+  }
+
+  return {
+    version: STATE_VERSION,
+    level: saved.level,
+    puzzle: [...saved.puzzle],
+    solution: [...saved.solution],
+    values: [...saved.values],
+    notes: normalizedNotes,
+    elapsed: saved.elapsed,
+    mistakes: saved.mistakes,
+    hints: saved.hints,
+  };
+}
+
 function newGame(level) {
   const available = PUZZLES[level];
-  const previous = Number(sessionStorage.getItem(`last-${level}`));
+  if (!available?.length) return;
+  const previous = readLastPuzzle(level);
   let index = Math.floor(Math.random() * available.length);
   if (available.length > 1 && index === previous) index = (index + 1) % available.length;
-  sessionStorage.setItem(`last-${level}`, String(index));
+  writeLastPuzzle(level, index);
 
   const item = available[index];
   game = {
+    version: STATE_VERSION,
     level,
     puzzle: [...item.p].map(Number),
     solution: [...item.s].map(Number),
@@ -81,19 +170,23 @@ function newGame(level) {
     hints: 0,
   };
 
-  selected = -1;
+  selected = game.puzzle.findIndex((value) => value === 0);
   notesMode = false;
   paused = false;
+  completed = false;
   history = [];
   showGame();
   render();
   saveGame();
   startTimer();
+  gameScreen.focus({ preventScroll: true });
 }
 
 function showGame() {
   menuScreen.classList.remove('active');
+  menuScreen.setAttribute('aria-hidden', 'true');
   gameScreen.classList.add('active');
+  gameScreen.removeAttribute('aria-hidden');
   byId('levelBadge').textContent = LEVELS[game.level];
   byId('pauseCover').hidden = true;
 }
@@ -101,8 +194,14 @@ function showGame() {
 function showMenu() {
   stopTimer();
   gameScreen.classList.remove('active');
+  gameScreen.setAttribute('aria-hidden', 'true');
   menuScreen.classList.add('active');
+  menuScreen.removeAttribute('aria-hidden');
   updateContinueButton();
+  const target = byId('continueButton').hidden
+    ? document.querySelector('[data-level="easy"]')
+    : byId('continueButton');
+  target?.focus({ preventScroll: true });
 }
 
 function updateContinueButton() {
@@ -110,35 +209,38 @@ function updateContinueButton() {
 }
 
 function saveGame() {
-  if (!game) return;
-  writeSavedGame(JSON.stringify({ ...game, notes: cloneNotes(game.notes) }));
+  if (!game || completed) return;
+  writeSavedGame(JSON.stringify({ ...game, version: STATE_VERSION, notes: cloneNotes(game.notes) }));
   updateContinueButton();
 }
 
 function loadGame() {
   try {
-    const saved = JSON.parse(readSavedGame());
-    if (!saved?.puzzle || !saved?.solution || !saved?.values) return;
+    const raw = readSavedGame();
+    const saved = raw ? normalizeSavedGame(JSON.parse(raw)) : null;
+    if (!saved) throw new Error('Invalid saved game');
     game = saved;
-    game.notes = (game.notes || Array.from({ length: 81 }, () => [])).map((entry) => Array.isArray(entry) ? entry : []);
-    selected = -1;
+    selected = game.puzzle.findIndex((value, index) => !value && !game.values[index]);
+    if (selected < 0) selected = game.puzzle.findIndex((value) => value === 0);
     notesMode = false;
     paused = false;
+    completed = false;
     history = [];
     showGame();
     render();
     startTimer();
+    gameScreen.focus({ preventScroll: true });
   } catch {
     removeSavedGame();
     updateContinueButton();
-    showToast('La partida guardada estaba dañada y se eliminó');
+    showToast('The saved game was invalid and has been removed');
   }
 }
 
 function startTimer() {
   stopTimer();
   timerId = window.setInterval(() => {
-    if (!game || paused) return;
+    if (!game || paused || completed) return;
     game.elapsed += 1;
     byId('timer').textContent = formatTime(game.elapsed);
     if (game.elapsed % 5 === 0) saveGame();
@@ -155,38 +257,58 @@ function render() {
   renderBoard();
   renderNumberPad();
   byId('timer').textContent = formatTime(game.elapsed);
-  byId('mistakes').textContent = `Errores: ${game.mistakes}`;
+  byId('mistakes').textContent = `Mistakes: ${game.mistakes}`;
   byId('notesButton').classList.toggle('active', notesMode);
   byId('notesButton').setAttribute('aria-pressed', String(notesMode));
 }
 
+function cellDescription(index) {
+  const row = Math.floor(index / 9) + 1;
+  const column = index % 9 + 1;
+  const value = game.values[index];
+  if (value) {
+    const origin = game.puzzle[index] ? ', given clue' : '';
+    const status = !game.puzzle[index] && value !== game.solution[index] ? ', incorrect' : '';
+    return `Row ${row}, column ${column}, number ${value}${origin}${status}`;
+  }
+  const candidates = game.notes[index];
+  const noteText = candidates.length ? `, candidates ${candidates.join(', ')}` : '';
+  return `Row ${row}, column ${column}, empty${noteText}`;
+}
+
 function renderBoard() {
+  const restoreBoardFocus = boardElement.contains(document.activeElement);
   boardElement.replaceChildren();
 
-  for (let index = 0; index < 81; index += 1) {
-    const row = Math.floor(index / 9);
-    const column = index % 9;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'cell';
-    button.dataset.index = String(index);
-    button.setAttribute('role', 'gridcell');
-    button.setAttribute('aria-rowindex', String(row + 1));
-    button.setAttribute('aria-colindex', String(column + 1));
+  for (let row = 0; row < 9; row += 1) {
+    const rowElement = document.createElement('div');
+    rowElement.className = 'board-row';
+    rowElement.setAttribute('role', 'row');
 
-    if (column === 2 || column === 5) button.classList.add('box-right');
-    if (row === 2 || row === 5) button.classList.add('box-bottom');
-    if (game.puzzle[index]) button.classList.add('given');
+    for (let column = 0; column < 9; column += 1) {
+      const index = row * 9 + column;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'cell';
+      button.dataset.index = String(index);
+      button.id = `cell-${index}`;
+      button.tabIndex = index === selected ? 0 : -1;
+      button.setAttribute('role', 'gridcell');
+      button.setAttribute('aria-rowindex', String(row + 1));
+      button.setAttribute('aria-colindex', String(column + 1));
+      button.setAttribute('aria-selected', String(index === selected));
 
-    const value = game.values[index];
-    if (value) {
-      button.textContent = String(value);
-      button.setAttribute('aria-label', `Fila ${row + 1}, columna ${column + 1}, número ${value}${game.puzzle[index] ? ', pista inicial' : ''}`);
-    } else {
-      button.setAttribute('aria-label', `Fila ${row + 1}, columna ${column + 1}, vacía`);
-      if (game.notes[index].length) {
+      if (column === 2 || column === 5) button.classList.add('box-right');
+      if (row === 2 || row === 5) button.classList.add('box-bottom');
+      if (game.puzzle[index]) button.classList.add('given');
+
+      const value = game.values[index];
+      if (value) {
+        button.textContent = String(value);
+      } else if (game.notes[index].length) {
         const notes = document.createElement('span');
         notes.className = 'notes';
+        notes.setAttribute('aria-hidden', 'true');
         for (let number = 1; number <= 9; number += 1) {
           const note = document.createElement('span');
           note.textContent = game.notes[index].includes(number) ? String(number) : '';
@@ -194,25 +316,36 @@ function renderBoard() {
         }
         button.appendChild(notes);
       }
-    }
 
-    button.addEventListener('click', () => selectCell(index));
-    boardElement.appendChild(button);
+      button.setAttribute('aria-label', cellDescription(index));
+      button.addEventListener('click', () => selectCell(index));
+      rowElement.appendChild(button);
+    }
+    boardElement.appendChild(rowElement);
   }
 
   applyHighlights();
+  if (restoreBoardFocus && selected >= 0) {
+    window.requestAnimationFrame(() => boardElement.querySelector(`[data-index="${selected}"]`)?.focus());
+  }
 }
 
-function selectCell(index) {
-  if (paused) return;
+function selectCell(index, focus = false) {
+  if (paused || completed || !modal.hidden) return;
   selected = index;
   applyHighlights();
+  if (focus) boardElement.querySelector(`[data-index="${selected}"]`)?.focus();
 }
 
 function applyHighlights() {
-  const cells = [...boardElement.children];
-  cells.forEach((cell) => cell.classList.remove('peer', 'same', 'selected', 'wrong'));
-  if (selected < 0) return;
+  const cells = [...boardElement.querySelectorAll('.cell')];
+  cells.forEach((cell, index) => {
+    cell.classList.remove('peer', 'same', 'selected', 'wrong');
+    cell.tabIndex = index === selected ? 0 : -1;
+    cell.setAttribute('aria-selected', String(index === selected));
+    cell.removeAttribute('aria-invalid');
+  });
+  if (selected < 0 || !cells[selected]) return;
 
   const selectedRow = Math.floor(selected / 9);
   const selectedColumn = selected % 9;
@@ -223,30 +356,19 @@ function applyHighlights() {
     const row = Math.floor(index / 9);
     const column = index % 9;
     const box = Math.floor(row / 3) * 3 + Math.floor(column / 3);
-    if (index !== selected && (row === selectedRow || column === selectedColumn || box === selectedBox)) cell.classList.add('peer');
-    if (selectedValue && index !== selected && game.values[index] === selectedValue) cell.classList.add('same');
+    if (index !== selected && (row === selectedRow || column === selectedColumn || box === selectedBox)) {
+      cell.classList.add('peer');
+    }
+    if (selectedValue && index !== selected && game.values[index] === selectedValue) {
+      cell.classList.add('same');
+    }
+    if (!game.puzzle[index] && game.values[index] && game.values[index] !== game.solution[index]) {
+      cell.classList.add('wrong');
+      cell.setAttribute('aria-invalid', 'true');
+    }
   });
 
   cells[selected].classList.add('selected');
-  cells.forEach((cell, index) => {
-    if (game.values[index] && hasConflict(index)) cell.classList.add('wrong');
-  });
-}
-
-function hasConflict(index) {
-  const value = game.values[index];
-  if (!value) return false;
-  const row = Math.floor(index / 9);
-  const column = index % 9;
-
-  for (let other = 0; other < 81; other += 1) {
-    if (other === index || game.values[other] !== value) continue;
-    const otherRow = Math.floor(other / 9);
-    const otherColumn = other % 9;
-    const sameBox = Math.floor(otherRow / 3) === Math.floor(row / 3) && Math.floor(otherColumn / 3) === Math.floor(column / 3);
-    if (otherRow === row || otherColumn === column || sameBox) return true;
-  }
-  return false;
 }
 
 function snapshot() {
@@ -259,11 +381,15 @@ function snapshot() {
   if (history.length > HISTORY_LIMIT) history.shift();
 }
 
+function interactionBlocked() {
+  return !game || paused || completed || !modal.hidden;
+}
+
 function enterNumber(number) {
-  if (paused || selected < 0 || game.puzzle[selected]) return;
-  snapshot();
+  if (interactionBlocked() || selected < 0 || game.puzzle[selected]) return;
 
   if (notesMode) {
+    snapshot();
     const notes = game.notes[selected];
     const position = notes.indexOf(number);
     if (position >= 0) notes.splice(position, 1);
@@ -271,10 +397,13 @@ function enterNumber(number) {
     notes.sort((a, b) => a - b);
     game.values[selected] = 0;
   } else {
+    if (game.values[selected] === number) return;
+    snapshot();
     game.values[selected] = number;
     game.notes[selected] = [];
-    if (number !== game.solution[selected]) game.mistakes += 1;
-    removePeerNote(selected, number);
+    const correct = number === game.solution[selected];
+    if (!correct) game.mistakes += 1;
+    else removePeerNote(selected, number);
   }
 
   render();
@@ -289,7 +418,8 @@ function removePeerNote(index, number) {
   for (let other = 0; other < 81; other += 1) {
     const otherRow = Math.floor(other / 9);
     const otherColumn = other % 9;
-    const sameBox = Math.floor(otherRow / 3) === Math.floor(row / 3) && Math.floor(otherColumn / 3) === Math.floor(column / 3);
+    const sameBox = Math.floor(otherRow / 3) === Math.floor(row / 3)
+      && Math.floor(otherColumn / 3) === Math.floor(column / 3);
     if (otherRow !== row && otherColumn !== column && !sameBox) continue;
     const position = game.notes[other].indexOf(number);
     if (position >= 0) game.notes[other].splice(position, 1);
@@ -297,7 +427,8 @@ function removePeerNote(index, number) {
 }
 
 function erase() {
-  if (paused || selected < 0 || game.puzzle[selected]) return;
+  if (interactionBlocked() || selected < 0 || game.puzzle[selected]) return;
+  if (!game.values[selected] && !game.notes[selected].length) return;
   snapshot();
   game.values[selected] = 0;
   game.notes[selected] = [];
@@ -306,8 +437,8 @@ function erase() {
 }
 
 function undo() {
-  if (paused || !history.length) {
-    showToast('Nada que deshacer');
+  if (interactionBlocked() || !history.length) {
+    if (!interactionBlocked()) showToast('Nothing to undo');
     return;
   }
   const previous = history.pop();
@@ -320,7 +451,7 @@ function undo() {
 }
 
 function hint() {
-  if (paused) return;
+  if (interactionBlocked()) return;
   const candidates = [];
   for (let index = 0; index < 81; index += 1) {
     if (!game.puzzle[index] && game.values[index] !== game.solution[index]) candidates.push(index);
@@ -339,99 +470,149 @@ function hint() {
   removePeerNote(index, game.values[index]);
   render();
   saveGame();
-  showToast('Pista colocada');
+  showToast('Hint placed');
   checkWin();
 }
 
 function renderNumberPad() {
+  const focusedNumber = Number(document.activeElement?.dataset?.number);
   numberPad.replaceChildren();
   for (let number = 1; number <= 9; number += 1) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'number';
+    button.dataset.number = String(number);
     button.textContent = String(number);
-    button.setAttribute('aria-label', `Introducir número ${number}`);
-    if (game.values.filter((value) => value === number).length >= 9) button.classList.add('completed');
+    button.setAttribute('aria-label', `Enter number ${number}`);
+    const complete = game.solution.every((value, index) => value !== number || game.values[index] === number);
+    button.classList.toggle('completed', complete);
+    button.disabled = complete;
     button.addEventListener('click', () => enterNumber(number));
     numberPad.appendChild(button);
+  }
+  if (isIntegerBetween(focusedNumber, 1, 9)) {
+    window.requestAnimationFrame(() => numberPad.querySelector(`[data-number="${focusedNumber}"]`)?.focus());
   }
 }
 
 function checkWin() {
   if (!game.values.every((value, index) => value === game.solution[index])) return;
+  completed = true;
   stopTimer();
   removeSavedGame();
+  updateContinueButton();
   window.setTimeout(showWinModal, 150);
 }
 
 function showWinModal() {
-  const result = `Sudoku ${LEVELS[game.level]} completado en ${formatTime(game.elapsed)}. Errores: ${game.mistakes}. Pistas: ${game.hints}.`;
+  const result = `${LEVELS[game.level]} Sudoku completed in ${formatTime(game.elapsed)}. Mistakes: ${game.mistakes}. Hints: ${game.hints}.`;
   openModal(`
     <div aria-hidden="true" style="font-size:3rem">🏆</div>
-    <h2 id="modalTitle">¡Completado!</h2>
+    <h2 id="modalTitle">Completed!</h2>
     <p>${result}</p>
     <div class="modal-actions">
-      <button class="primary" id="shareResultButton" type="button">Compartir resultado</button>
-      <button class="secondary" id="newGameButton" type="button">Otra partida</button>
-      <button class="secondary" id="menuButton" type="button">Menú</button>
+      <button class="primary" id="shareResultButton" type="button">Share result</button>
+      <button class="secondary" id="newGameButton" type="button">Play again</button>
+      <button class="secondary" id="menuButton" type="button">Menu</button>
     </div>
-  `);
-  byId('shareResultButton').addEventListener('click', () => shareText(`🧩 ${result} ¿Puedes superarme?`));
-  byId('newGameButton').addEventListener('click', () => { closeModal(); newGame(game.level); });
-  byId('menuButton').addEventListener('click', () => { closeModal(); game = null; showMenu(); });
+  `, { dismissible: false });
+  byId('shareResultButton').addEventListener('click', () => shareText(`🧩 ${result} Can you beat it?`));
+  byId('newGameButton').addEventListener('click', () => {
+    closeModal({ force: true });
+    newGame(game.level);
+  });
+  byId('menuButton').addEventListener('click', () => {
+    closeModal({ force: true });
+    game = null;
+    completed = false;
+    showMenu();
+  });
 }
 
 function togglePause(forceResume = false) {
-  if (!game) return;
+  if (!game || completed || !modal.hidden) return;
   paused = forceResume ? false : !paused;
   byId('pauseCover').hidden = !paused;
-  if (!paused) saveGame();
+  if (!paused) {
+    saveGame();
+    boardElement.querySelector(`[data-index="${selected}"]`)?.focus();
+  } else {
+    byId('resumeButton').focus();
+  }
 }
 
 function confirmBackToMenu() {
+  if (!game || completed) return;
   openModal(`
-    <h2 id="modalTitle">Volver al menú</h2>
-    <p>La partida puede guardarse para continuarla después.</p>
+    <h2 id="modalTitle">Return to menu</h2>
+    <p>You can save this game and continue it later.</p>
     <div class="modal-actions">
-      <button class="primary" id="saveExitButton" type="button">Guardar y salir</button>
-      <button class="danger" id="deleteExitButton" type="button">Borrar partida</button>
-      <button class="secondary" id="cancelExitButton" type="button">Cancelar</button>
+      <button class="primary" id="saveExitButton" type="button">Save and exit</button>
+      <button class="danger" id="deleteExitButton" type="button">Delete game</button>
+      <button class="secondary" id="cancelExitButton" type="button">Cancel</button>
     </div>
   `);
-  byId('saveExitButton').addEventListener('click', () => { saveGame(); closeModal(); showMenu(); });
-  byId('deleteExitButton').addEventListener('click', () => { removeSavedGame(); game = null; closeModal(); showMenu(); });
+  byId('saveExitButton').addEventListener('click', () => {
+    saveGame();
+    closeModal();
+    showMenu();
+  });
+  byId('deleteExitButton').addEventListener('click', () => {
+    removeSavedGame();
+    game = null;
+    closeModal();
+    showMenu();
+  });
   byId('cancelExitButton').addEventListener('click', closeModal);
 }
 
 function showHelp() {
   openModal(`
-    <h2 id="modalTitle">Cómo jugar</h2>
+    <h2 id="modalTitle">How to play</h2>
     <div class="help">
-      <p><strong>Objetivo:</strong> completa cada fila, columna y bloque de 3 × 3 con los números del 1 al 9 sin repetir.</p>
+      <p><strong>Goal:</strong> complete every row, column and 3 × 3 box with the numbers 1 to 9 without repeats.</p>
       <ul>
-        <li>Selecciona una casilla y pulsa un número.</li>
-        <li>Usa <strong>Notas</strong> para registrar candidatos.</li>
-        <li><strong>Pista</strong> completa una casilla correcta.</li>
-        <li>La partida se guarda automáticamente.</li>
-        <li>También puedes jugar con el teclado.</li>
+        <li>Select a cell and choose a number.</li>
+        <li>Use <strong>Notes</strong> to record candidates.</li>
+        <li><strong>Hint</strong> completes one cell correctly.</li>
+        <li>Your game is saved automatically.</li>
+        <li>Use number keys, arrow keys, Home, End, Delete and N on a keyboard.</li>
       </ul>
     </div>
-    <div class="modal-actions"><button class="primary" id="closeHelpButton" type="button">Entendido</button></div>
+    <div class="modal-actions"><button class="primary" id="closeHelpButton" type="button">Got it</button></div>
   `);
   byId('closeHelpButton').addEventListener('click', closeModal);
 }
 
-function openModal(content) {
+function openModal(content, { dismissible = true } = {}) {
   lastFocusedElement = document.activeElement;
+  modalDismissible = dismissible;
   modalContent.innerHTML = content;
   modal.hidden = false;
+  appElement.inert = true;
   modal.querySelector('button')?.focus();
 }
 
-function closeModal() {
+function closeModal({ force = false } = {}) {
+  if (!modalDismissible && !force) return;
   modal.hidden = true;
   modalContent.replaceChildren();
+  appElement.inert = false;
   lastFocusedElement?.focus();
+}
+
+function trapModalFocus(event) {
+  const focusable = [...modal.querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function showToast(message) {
@@ -445,18 +626,32 @@ function showToast(message) {
 async function shareText(text, url = '') {
   try {
     if (navigator.share) {
-      await navigator.share({ title: 'Sudoku Instantáneo', text, ...(url ? { url } : {}) });
+      await navigator.share({ title: 'Sudoku Instant', text, ...(url ? { url } : {}) });
       return;
     }
     await navigator.clipboard.writeText(url ? `${text} ${url}` : text);
-    showToast('Copiado al portapapeles');
+    showToast('Copied to clipboard');
   } catch (error) {
-    if (error?.name !== 'AbortError') showToast('No se pudo compartir');
+    if (error?.name !== 'AbortError') showToast('The result could not be shared');
   }
 }
 
 function shareGame() {
-  shareText('🧩 Juega a Sudoku Instantáneo:', window.location.href);
+  shareText('🧩 Play Sudoku Instant:', window.location.href);
+}
+
+function moveSelection(key) {
+  if (selected < 0) selected = 0;
+  const row = Math.floor(selected / 9);
+  const column = selected % 9;
+  let next = selected;
+  if (key === 'ArrowLeft' && column > 0) next -= 1;
+  if (key === 'ArrowRight' && column < 8) next += 1;
+  if (key === 'ArrowUp' && row > 0) next -= 9;
+  if (key === 'ArrowDown' && row < 8) next += 9;
+  if (key === 'Home') next = row * 9;
+  if (key === 'End') next = row * 9 + 8;
+  selectCell(next, true);
 }
 
 document.querySelectorAll('[data-level]').forEach((button) => {
@@ -468,23 +663,47 @@ byId('helpButton').addEventListener('click', showHelp);
 byId('backButton').addEventListener('click', confirmBackToMenu);
 byId('undoButton').addEventListener('click', undo);
 byId('eraseButton').addEventListener('click', erase);
-byId('notesButton').addEventListener('click', () => { notesMode = !notesMode; render(); showToast(notesMode ? 'Modo notas activado' : 'Modo normal'); });
+byId('notesButton').addEventListener('click', () => {
+  if (interactionBlocked()) return;
+  notesMode = !notesMode;
+  render();
+  showToast(notesMode ? 'Notes enabled' : 'Normal entry enabled');
+});
 byId('hintButton').addEventListener('click', hint);
 byId('pauseButton').addEventListener('click', () => togglePause());
 byId('resumeButton').addEventListener('click', () => togglePause(true));
-modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+modal.addEventListener('click', (event) => {
+  if (event.target === modal && modalDismissible) closeModal();
+});
 
 document.addEventListener('keydown', (event) => {
-  if (!modal.hidden && event.key === 'Escape') { closeModal(); return; }
-  if (!game || paused) return;
-  if (/^[1-9]$/.test(event.key)) enterNumber(Number(event.key));
-  if (event.key === 'Backspace' || event.key === 'Delete') erase();
-  if (event.key.toLowerCase() === 'n') { notesMode = !notesMode; render(); }
-  if (event.key === 'Escape') confirmBackToMenu();
+  if (!modal.hidden) {
+    if (event.key === 'Tab') trapModalFocus(event);
+    if (event.key === 'Escape' && modalDismissible) closeModal();
+    return;
+  }
+  if (!game || paused || completed) return;
+  if (/^[1-9]$/.test(event.key)) {
+    event.preventDefault();
+    enterNumber(Number(event.key));
+  } else if (event.key === 'Backspace' || event.key === 'Delete') {
+    event.preventDefault();
+    erase();
+  } else if (event.key.toLowerCase() === 'n') {
+    event.preventDefault();
+    notesMode = !notesMode;
+    render();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    confirmBackToMenu();
+  } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault();
+    moveSelection(event.key);
+  }
 });
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && game && !paused) {
+  if (document.hidden && game && !paused && !completed) {
     paused = true;
     byId('pauseCover').hidden = false;
     saveGame();
@@ -494,7 +713,22 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('beforeunload', saveGame);
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then((registration) => {
+        registration.addEventListener('updatefound', () => {
+          const worker = registration.installing;
+          worker?.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+              showToast('An update is ready for your next visit');
+            }
+          });
+        });
+      })
+      .catch(() => showToast('Offline mode is unavailable'));
+  });
 }
 
+menuScreen.removeAttribute('aria-hidden');
+gameScreen.setAttribute('aria-hidden', 'true');
 updateContinueButton();

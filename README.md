@@ -1,109 +1,151 @@
-# Sudoku Instantáneo — Progressive Web App
+# Sudoku Instant — Progressive Web App
 
-[![Tests](https://github.com/NishikawaButterfly/sudoku-pwa/actions/workflows/test.yml/badge.svg)](https://github.com/NishikawaButterfly/sudoku-pwa/actions/workflows/test.yml)
-[![Deploy to GitHub Pages](https://github.com/NishikawaButterfly/sudoku-pwa/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/NishikawaButterfly/sudoku-pwa/actions/workflows/deploy-pages.yml)
+[![CI](https://github.com/NishikawaButterfly/sudoku-pwa/actions/workflows/ci.yml/badge.svg)](https://github.com/NishikawaButterfly/sudoku-pwa/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A responsive and installable Sudoku game built with semantic HTML, modern CSS and vanilla JavaScript. It includes six difficulty levels, automatic local saving, candidate notes, hints, undo, keyboard controls and offline support.
+A responsive, accessible and installable Sudoku game built with semantic HTML, modern CSS and vanilla JavaScript. It provides six clue-based difficulty levels, local progress saving, candidate notes, hints, undo, keyboard controls and offline support without accounts or runtime dependencies.
 
 [**Play the live demo**](https://jazzy-wisp-f7af77.netlify.app/)
 
-## Project overview
+![Sudoku Instant running on a mobile viewport](assets/screenshots/gameplay.png)
 
-The first version was distributed as a standalone HTML file. That approach worked in desktop browsers, but some mobile messaging applications opened it as a restricted document preview and prevented the JavaScript controls from working correctly.
+## Why this project exists
 
-This project solves that delivery problem by packaging the game as a Progressive Web App (PWA) that can be opened through a public HTTPS URL, installed on supported devices and used offline after the first visit.
+The first version was distributed as a standalone HTML file. Some mobile messaging applications opened that file inside a restricted document preview, where JavaScript controls could not run reliably.
 
-## Features
+This repository turns the game into a Progressive Web App delivered over HTTPS. It can be opened from a normal link, installed on supported devices and used offline after its application shell has been cached.
 
-- Six difficulty levels with 24 uniquely solvable puzzles
-- Responsive touch interface for phones, tablets and desktops
-- Candidate-note mode
-- Hint, erase, undo and pause controls
+## Product capabilities
+
+- Six levels and 24 prevalidated puzzles
+- Responsive touch layout for phones, tablets and desktop browsers
+- Candidate notes, hint, erase, undo and pause controls
 - Timer, mistake counter and completion summary
-- Automatic progress persistence with `localStorage`
-- Native Web Share API support with clipboard fallback
-- Keyboard controls and accessible labels
-- Installable PWA manifest
-- Offline application shell through a service worker
-- No accounts, analytics, advertising or external runtime dependencies
+- Automatic local progress persistence with strict saved-state validation
+- Native Web Share API with a clipboard fallback
+- Roving grid focus, arrow-key navigation and descriptive cell labels
+- Installable web app manifest and isolated offline cache
+- No accounts, analytics, advertising or external runtime services
 
-## Technology
+## Quality controls
 
-- Semantic HTML5
-- Modern CSS and responsive layouts
-- Vanilla JavaScript ES modules
-- Web Storage API
-- Service Worker and Cache API
-- Web App Manifest
-- Python puzzle-generation utility
-- Playwright smoke tests
-- GitHub Actions continuous integration
-- GitHub Pages and Netlify deployment configuration
+- Dependency-free Node tests validate every puzzle, stored solution and clue count.
+- A bounded solver verifies that all 24 puzzles have exactly one solution.
+- Playwright runs the product flow in desktop Chrome and a Pixel 7 viewport.
+- Regression tests cover persistence, corrupt state, notes, pause, mistakes, undo, modal isolation, keyboard navigation and terminal completion.
+- GitHub Actions runs the complete suite for every pull request and push to `main`.
+
+> Difficulty labels are based on clue counts (42 to 25), not on a human-solving-technique rating.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI["Semantic HTML + responsive CSS"] --> APP["Game controller (ES modules)"]
+    APP --> DATA["Validated puzzle catalogue"]
+    APP --> STORE["Browser localStorage"]
+    SW["Service worker"] --> CACHE["Versioned app-shell cache"]
+    TESTS["Node + Playwright tests"] --> APP
+    TESTS --> DATA
+```
+
+The browser loads a static application shell. `src/app.js` owns game state and presentation, while `src/puzzles.js` contains generated puzzle/solution pairs. Progress stays in the browser. The service worker caches only this application's same-origin assets and deletes only older caches that share its own prefix.
+
+## Important technical decisions
+
+- **Precomputed puzzles:** generation and uniqueness checks stay out of the runtime path.
+- **Strict persistence boundary:** malformed or inconsistent browser data is rejected instead of being rendered.
+- **Terminal completion state:** a finished board cannot be edited or silently saved again.
+- **No framework dependency:** the small product surface remains easy to audit and deploy as static files.
+- **Cross-platform test server:** local and CI tests use Node rather than relying on a system Python command.
+- **Scoped PWA cache:** the service worker cannot delete caches that belong to other apps on the same origin.
 
 ## Project structure
 
 ```text
 sudoku-pwa/
-├── .github/workflows/
-│   ├── deploy-pages.yml
-│   └── test.yml
-├── assets/icons/
-├── src/
-│   ├── app.js
-│   ├── puzzles.js
-│   └── styles.css
-├── tests/smoke.spec.js
-├── tools/generate_puzzles.py
-├── index.html
-├── manifest.webmanifest
-├── sw.js
-├── netlify.toml
-└── README.md
+|-- .github/workflows/ci.yml
+|-- assets/
+|   |-- icons/
+|   `-- screenshots/
+|-- src/
+|   |-- app.js
+|   |-- professional.css
+|   |-- puzzles.js
+|   `-- styles.css
+|-- tests/
+|   |-- server.js
+|   `-- smoke.spec.js
+|-- unit/puzzles.test.js
+|-- tools/generate_puzzles.py
+|-- index.html
+|-- manifest.webmanifest
+|-- playwright.config.js
+|-- sw.js
+`-- README.md
 ```
 
 ## Run locally
 
-The service worker requires an HTTP origin, so open the project through a local server rather than double-clicking `index.html`.
-
-```bash
-python3 -m http.server 4173
-```
-
-Then visit `http://localhost:4173`.
-
-## Tests
+Requirements: Node.js 20 or newer.
 
 ```bash
 npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:4173`.
+
+## Run the tests
+
+Install the Playwright browser once:
+
+```bash
 npx playwright install chromium
+```
+
+Then run the data and browser suites:
+
+```bash
 npm test
 ```
 
-The smoke suite verifies that the application loads, exposes six difficulty levels, creates an 81-cell board, accepts input, saves the game state, activates note mode and pauses the game.
+Individual commands:
 
-## Puzzle generation and validation
+```bash
+npm run test:data
+npm run test:e2e
+```
 
-`tools/generate_puzzles.py` creates complete boards through randomized backtracking, removes clues and checks that every generated puzzle has exactly one solution. The validated puzzle data is stored in `src/puzzles.js`, so the browser does not need to perform expensive generation work at runtime.
+## Puzzle generation
 
-The repository includes 24 puzzles: four for each of the six difficulty levels.
+`tools/generate_puzzles.py` creates solved boards through randomized backtracking, removes clues and checks uniqueness before writing `src/puzzles.js`.
 
-## Privacy
+```bash
+python tools/generate_puzzles.py --per-level 4 --seed 2026
+```
 
-Game state is stored only in the user's browser. The application does not require registration and does not include analytics, tracking scripts or advertising code.
+The checked-in catalogue is validated again by the Node test suite, so generation and delivery have independent quality gates.
 
-## Accessibility
+## Privacy and security
 
-The board exposes grid semantics, row and column labels, focus-visible states, keyboard number entry and reduced-motion support. Accessibility is treated as an ongoing part of the project; additional automated audits are included in the roadmap.
+Game state remains on the user's device. The app sends no gameplay data, includes no tracking scripts and requests no account. Netlify headers disable MIME sniffing and unnecessary browser capabilities. The local test server also prevents path traversal and serves explicit content types.
+
+## Known limitations
+
+- Difficulty is approximated by clue count rather than rated solving techniques.
+- Progress is local to one browser profile and is not synchronized across devices.
+- The initial release has one language (English) and one visual theme.
+- Offline use starts only after the first successful online visit.
 
 ## Roadmap
 
-- Add automated accessibility checks
-- Add statistics by difficulty
+- Add automated accessibility audits
 - Add optional dark mode
+- Add privacy-preserving local statistics
 - Add a daily challenge
 - Add internationalisation
-- Improve offline-update notifications
+- Show an explicit update/reload action when a new service worker is ready
 
 ## License
 
