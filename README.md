@@ -1,9 +1,8 @@
-# Sudoku Instant — Progressive Web App
+# Sudoku Instant
 
 [![CI](https://github.com/NishikawaButterfly/sudoku-pwa/actions/workflows/ci.yml/badge.svg)](https://github.com/NishikawaButterfly/sudoku-pwa/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A responsive, accessible and installable Sudoku game built with semantic HTML, modern CSS and vanilla JavaScript. It provides six clue-based difficulty levels, local progress saving, candidate notes, hints, undo, keyboard controls and offline support without accounts or runtime dependencies.
+A responsive, accessible Sudoku game you can install as a web app, built with semantic HTML, modern CSS and vanilla JavaScript. Six difficulty levels, candidate notes, hints, undo, keyboard controls, saved progress and offline play. No accounts, no runtime dependencies.
 
 [**Play the live demo**](https://jazzy-wisp-f7af77.netlify.app/)
 
@@ -11,29 +10,24 @@ A responsive, accessible and installable Sudoku game built with semantic HTML, m
 
 ## Why this project exists
 
-The first version was distributed as a standalone HTML file. Some mobile messaging applications opened that file inside a restricted document preview, where JavaScript controls could not run reliably.
+The first version was a standalone HTML file. Some mobile messaging apps opened that file inside a restricted document preview, where JavaScript controls could not run reliably.
 
-This repository turns the game into a Progressive Web App delivered over HTTPS. It can be opened from a normal link, installed on supported devices and used offline after its application shell has been cached.
+This repository turns the game into a Progressive Web App delivered over HTTPS. It opens from a normal link, installs on supported devices and works offline once its app shell has been cached.
 
-## Product capabilities
+## Features
 
-- Six levels and 24 prevalidated puzzles
-- Responsive touch layout for phones, tablets and desktop browsers
-- Candidate notes, hint, erase, undo and pause controls
-- Timer, mistake counter and completion summary
-- Automatic local progress persistence with strict saved-state validation
-- Native Web Share API with a clipboard fallback
-- Roving grid focus, arrow-key navigation and descriptive cell labels
-- Installable web app manifest and isolated offline cache
-- No accounts, analytics, advertising or external runtime services
+- 24 prevalidated puzzles across six difficulty levels
+- Candidate notes, hint, erase, undo and pause
+- Timer, mistake counter and a summary when you finish
+- Automatic progress saving (saved state is strictly validated before it is restored)
+- Sharing through the native Web Share API, with a clipboard fallback
+- Full keyboard play: roving focus on the grid, arrow-key navigation, descriptive cell labels
 
-## Quality controls
+The touch layout works on phones, tablets and desktop browsers. The app installs through a web manifest and keeps an offline cache that is isolated to this app. There are no accounts, no analytics, no ads and no external runtime services.
 
-- Dependency-free Node tests validate every puzzle, stored solution and clue count.
-- A bounded solver verifies that all 24 puzzles have exactly one solution.
-- Playwright runs the product flow in desktop Chrome and a Pixel 7 viewport.
-- Regression tests cover persistence, corrupt state, notes, pause, mistakes, undo, modal isolation, keyboard navigation and terminal completion.
-- GitHub Actions runs the complete suite for every pull request and push to `main`.
+## Tests
+
+Dependency-free Node tests check the puzzle data: every puzzle, its stored solution and its clue count, plus a bounded solver that confirms all 24 puzzles have exactly one solution. Playwright then plays through the app in desktop Chrome and a Pixel 7 viewport. The regression suite covers persistence, corrupt saved state, notes, pause, mistakes, undo, modal isolation, keyboard navigation and the terminal completion state. GitHub Actions runs everything on each push to `main` and each pull request.
 
 > Difficulty labels are based on clue counts (42 to 25), not on a human-solving-technique rating.
 
@@ -49,16 +43,9 @@ flowchart LR
     TESTS --> DATA
 ```
 
-The browser loads a static application shell. `src/app.js` owns game state and presentation, while `src/puzzles.js` contains generated puzzle/solution pairs. Progress stays in the browser. The service worker caches only this application's same-origin assets and deletes only older caches that share its own prefix.
+The browser loads a static app shell. `src/app.js` owns game state and presentation; `src/puzzles.js` holds the generated puzzle/solution pairs. Puzzles are precomputed, so generation and uniqueness checks never run in the browser. Progress stays in localStorage behind a strict boundary: malformed or inconsistent data is rejected instead of rendered, and a finished board is terminal, so it cannot be edited or silently saved again.
 
-## Important technical decisions
-
-- **Precomputed puzzles:** generation and uniqueness checks stay out of the runtime path.
-- **Strict persistence boundary:** malformed or inconsistent browser data is rejected instead of being rendered.
-- **Terminal completion state:** a finished board cannot be edited or silently saved again.
-- **No framework dependency:** the small product surface remains easy to audit and deploy as static files.
-- **Cross-platform test server:** local and CI tests use Node rather than relying on a system Python command.
-- **Scoped PWA cache:** the service worker cannot delete caches that belong to other apps on the same origin.
+A few other choices worth mentioning. There is no framework, which keeps the small codebase easy to audit and deploy as static files. The service worker caches only this app's same-origin assets and deletes only older caches under its own prefix, so it cannot touch caches that belong to other apps on the same origin. Local and CI tests use a Node server rather than relying on a system Python command.
 
 ## Project structure
 
@@ -125,27 +112,22 @@ npm run test:e2e
 python tools/generate_puzzles.py --per-level 4 --seed 2026
 ```
 
-The checked-in catalogue is validated again by the Node test suite, so generation and delivery have independent quality gates.
+The Node test suite validates the checked-in catalogue again, independently of the generator.
 
 ## Privacy and security
 
-Game state remains on the user's device. The app sends no gameplay data, includes no tracking scripts and requests no account. Netlify headers disable MIME sniffing and unnecessary browser capabilities. The local test server also prevents path traversal and serves explicit content types.
+Game state stays on your device. The app sends no gameplay data, includes no tracking scripts and never asks for an account. Netlify headers disable MIME sniffing and browser capabilities the app does not use. The local test server also prevents path traversal and serves explicit content types.
 
 ## Known limitations
 
-- Difficulty is approximated by clue count rather than rated solving techniques.
-- Progress is local to one browser profile and is not synchronized across devices.
-- The initial release has one language (English) and one visual theme.
-- Offline use starts only after the first successful online visit.
+- Difficulty is approximated by clue count, not by rated solving techniques.
+- Progress lives in one browser profile; there is no sync across devices.
+- English only, one visual theme.
+- Offline use only kicks in after the first successful online visit.
 
 ## Roadmap
 
-- Add automated accessibility audits
-- Add optional dark mode
-- Add privacy-preserving local statistics
-- Add a daily challenge
-- Add internationalisation
-- Show an explicit update/reload action when a new service worker is ready
+Things I might add: dark mode, a daily challenge, privacy-preserving local statistics, translations, automated accessibility audits, and an explicit update prompt when a new service worker is ready.
 
 ## License
 
