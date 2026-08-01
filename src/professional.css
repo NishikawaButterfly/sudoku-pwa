@@ -1,0 +1,42 @@
+.board-row {
+  display: contents;
+}
+
+.board-row:last-child .cell {
+  border-bottom: 0;
+}
+
+.easy {
+  background: #137a3c;
+}
+
+.hard {
+  background: #9c4f0d;
+}
+
+.number:disabled {
+  cursor: default;
+  opacity: .28;
+}
+
+.cell[aria-invalid="true"] {
+  background: var(--error);
+  color: var(--error-text);
+}
+
+.screen[aria-hidden="true"] {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  .cell.selected {
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
+
+  .cell.wrong {
+    outline: 3px solid LinkText;
+    outline-offset: -3px;
+  }
+}
+

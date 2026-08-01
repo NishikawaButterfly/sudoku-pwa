@@ -1,13 +1,21 @@
 {
-  "name": "sudoku-instantaneo-pwa",
-  "version": "1.0.0",
+  "name": "sudoku-pwa",
+  "version": "1.1.0",
   "private": true,
-  "description": "Responsive and installable Sudoku Progressive Web App.",
+  "type": "module",
+  "description": "Responsive, accessible and installable Sudoku Progressive Web App.",
   "scripts": {
-    "test": "playwright test",
-    "test:ui": "playwright test --ui"
+    "dev": "node tests/server.js",
+    "screenshot": "node tools/capture-screenshot.js",
+    "test": "npm run test:data && npm run test:e2e",
+    "test:data": "node --test unit/puzzles.test.js",
+    "test:e2e": "node tests/run-e2e.js",
+    "test:ui": "node tests/run-e2e.js --ui"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
