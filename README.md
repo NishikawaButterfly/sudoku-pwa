@@ -4,7 +4,7 @@
 
 A responsive, accessible Sudoku game you can install as a web app, built with semantic HTML, modern CSS and vanilla JavaScript. Six difficulty levels, candidate notes, hints, undo, keyboard controls, saved progress and offline play. No accounts, no runtime dependencies.
 
-[**Play the live demo**](https://jazzy-wisp-f7af77.netlify.app/)
+[**Play the live demo**](https://nishikawabutterfly.github.io/sudoku-pwa/)
 
 ![Sudoku Instant running on a mobile viewport](assets/screenshots/gameplay.png)
 
@@ -116,7 +116,7 @@ The Node test suite validates the checked-in catalogue again, independently of t
 
 ## Privacy and security
 
-Game state stays on your device. The app sends no gameplay data, includes no tracking scripts and never asks for an account. Netlify headers disable MIME sniffing and browser capabilities the app does not use. The local test server also prevents path traversal and serves explicit content types.
+Game state stays on your device. The app sends no gameplay data, includes no tracking scripts and never asks for an account. The site is served as plain static files from GitHub Pages. The local test server also prevents path traversal and serves explicit content types.
 
 ## Known limitations
 
