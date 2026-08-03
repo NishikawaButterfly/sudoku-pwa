@@ -61,10 +61,13 @@ sudoku-pwa/
 |   |-- puzzles.js
 |   `-- styles.css
 |-- tests/
+|   |-- run-e2e.js
 |   |-- server.js
 |   `-- smoke.spec.js
 |-- unit/puzzles.test.js
-|-- tools/generate_puzzles.py
+|-- tools/
+|   |-- capture-screenshot.js
+|   `-- generate_puzzles.py
 |-- index.html
 |-- manifest.webmanifest
 |-- playwright.config.js
